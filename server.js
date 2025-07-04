@@ -1,27 +1,53 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const path = require('path');
-
-// Import routes
-const ttsRoute = require('./routes/tts');
+const fetch = require('node-fetch');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 
-// ✅ Correctly mount the TTS route
-app.use('/api/tts', ttsRoute);
+const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY;
 
-// Optional: Health check route
-app.get('/', (req, res) => {
-  res.send('🟢 TTS Backend is running');
+app.post('/api/tts', async (req, res) => {
+  const { text, voice_id } = req.body;
+
+  try {
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice_id}`, {
+      method: 'POST',
+      headers: {
+        'xi-api-key': ELEVENLABS_API_KEY,
+        'Content-Type': 'application/json',
+        'Accept': 'audio/mpeg',
+      },
+      body: JSON.stringify({
+        text,
+        voice_settings: {
+          stability: 0.75,
+          similarity_boost: 0.75,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("TTS Error:", errorText);
+      return res.status(500).json({ error: "Failed to generate speech", details: errorText });
+    }
+
+    const audioBuffer = await response.buffer();
+    res.set({
+      'Content-Type': 'audio/mpeg',
+      'Content-Disposition': 'attachment; filename="speech.mp3"',
+    });
+    res.send(audioBuffer);
+  } catch (err) {
+    console.error("TTS Error:", err);
+    res.status(500).json({ error: 'Failed to generate speech' });
+  }
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+const port = process.env.PORT || 5000;
+app.listen(port, () => {
+  console.log(`✅ Server running on port ${port}`);
 });
